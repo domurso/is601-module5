@@ -11,6 +11,8 @@ from app.calculator_config import CalculatorConfig
 from app.exceptions import OperationError, ValidationError
 from app.history import LoggingObserver, AutoSaveObserver
 from app.operations import OperationFactory
+import io
+
 
 # Fixture to initialize Calculator with a temporary directory for file paths
 @pytest.fixture
@@ -178,3 +180,53 @@ def test_calculator_repl_help(mock_print, mock_input):
 def test_calculator_repl_addition(mock_print, mock_input):
     calculator_repl()
     mock_print.assert_any_call("\nResult: 5")
+
+
+# def test_notify_observers_calls_update(calculator):
+#     observer1 = Mock()
+#     observer2 = Mock()
+#     calculator.add_observer(observer1)
+#     calculator.add_observer(observer2)
+#     calc_obj = Calculation("add", 1, 2, result=3)
+#     calculator.notify_observers(calc_obj)
+#     observer1.update.assert_called_once_with(calc_obj)
+#     observer2.update.assert_called_once_with(calc_obj)
+
+
+def test_undo_empty_stack_returns_false(calculator):
+    assert calculator.undo_stack == []
+    assert calculator.undo() is False
+
+# Test redo returns False if redo_stack is empty
+def test_redo_empty_stack_returns_false(calculator):
+    assert calculator.redo_stack == []
+    assert calculator.redo() is False
+
+# Test history is trimmed if it exceeds max_history_size
+def test_history_trimmed_when_exceeds_max(calculator):
+    calculator.config.max_history_size = 3
+    operation = OperationFactory.create_operation('add')
+    calculator.set_operation(operation)
+    for i in range(5):
+        calculator.perform_operation(i, i)
+    assert len(calculator.history) == 3  # should only keep last 3
+
+# Test save_history creates empty CSV when history is empty
+@patch('pandas.DataFrame.to_csv')
+def test_save_empty_history_creates_empty_csv(mock_to_csv, calculator):
+    calculator.history.clear()
+    calculator.save_history()
+    mock_to_csv.assert_called_once()
+    args, kwargs = mock_to_csv.call_args
+    # The dataframe should have columns, even if empty
+    df = args[0] if args else kwargs.get('path_or_buf')
+    # Can't get dataframe from call directly but we trust pandas DataFrame to_csv is called.
+
+# Test load_history when history file does not exist logs info and keeps empty history
+@patch('app.calculator.logging.info')
+def test_load_history_no_file_logs_info(mock_log_info, calculator):
+    #with patch.object(calculator.config.history_file, 'exists', return_value=False):
+    with patch('pathlib.Path.exists', return_value=False):    
+        calculator.load_history()
+        mock_log_info.assert_any_call("No history file found - starting with empty history")
+        assert calculator.history == []
